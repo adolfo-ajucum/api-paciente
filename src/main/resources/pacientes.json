@@ -1,0 +1,26 @@
+[
+  {
+    "codigo": "P001",
+    "dpi": "2900000000001",
+    "nombres": "Ana María",
+    "apellidos": "García López",
+    "fechaNacimiento": "1990-05-15",
+    "sexo": "Femenino"
+  },
+  {
+    "codigo": "P002",
+    "dpi": "2900000000002",
+    "nombres": "Luis Alberto",
+    "apellidos": "Martínez Pérez",
+    "fechaNacimiento": "1985-11-20",
+    "sexo": "Masculino"
+  },
+  {
+    "codigo": "P020",
+    "dpi": "2900000000020",
+    "nombres": "Elena Sofia",
+    "apellidos": "Morales Castillo",
+    "fechaNacimiento": "1999-03-12",
+    "sexo": "Femenino"
+  }
+]
