@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/pacientes") // Ruta base para la API
+@RequestMapping("/pacientes") // Ruta base para la API
 public class PacienteController {
 
     private final PacienteService pacienteService;

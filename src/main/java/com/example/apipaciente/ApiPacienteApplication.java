@@ -10,7 +10,7 @@ public class ApiPacienteApplication {
 		SpringApplication.run(ApiPacienteApplication.class, args);
 		System.out.println("\n*****************************************");
 		System.out.println("*** API de Pacientes Iniciada ***");
-		System.out.println(" Accede desde: http://localhost:8080/api/pacientes");
+		System.out.println(" Accede desde: http://localhost:8080/pacientes");
 		System.out.println("*****************************************");
 	}
 
