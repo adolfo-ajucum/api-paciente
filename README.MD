@@ -161,8 +161,8 @@ JSON
 Respuesta si no se encuentra (404 Not Found): Cuerpo vacío.
 3. Buscar Paciente por DPI
 Método: GET
-Ruta: /api/pacientes/buscar?dpi={numero_dpi}
-Ejemplo: /api/pacientes/buscar?dpi=2900000000001
+Ruta: /pacientes/buscar?dpi={numero_dpi}
+Ejemplo: /pacientes/buscar?dpi=2900000000001
 Respuesta Exitosa (200 OK): Un objeto JSON con los datos del paciente solicitado. (Similar al de buscar por código).
 Respuesta si no se encuentra (404 Not Found): Cuerpo vacío.
 Configuración ⚙️
