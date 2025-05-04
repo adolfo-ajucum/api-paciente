@@ -9,6 +9,7 @@ public class Paciente {
     private String apellidos;
     private LocalDate fechaNacimiento;
     private String sexo;
+    private String edad;
 
     // Constructor vacío (necesario para Jackson/JSON)
     public Paciente() {}
@@ -40,4 +41,6 @@ public class Paciente {
     public void setFechaNacimiento(LocalDate fechaNacimiento) { this.fechaNacimiento = fechaNacimiento; }
     public String getSexo() { return sexo; }
     public void setSexo(String sexo) { this.sexo = sexo; }
+    public String getEdad() { return edad; }
+    public void setEdad(String edad) { this.edad = edad; }
 }

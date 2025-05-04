@@ -1,132 +1,160 @@
 package com.example.apipaciente.service;
 
+import com.example.apipaciente.model.LegacyPacienteDTO; // Importar DTO
 import com.example.apipaciente.model.Paciente;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value; // Importar @Value
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.core.io.Resource; // Importar Resource
-import org.springframework.core.io.UrlResource; // Importar UrlResource
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient; // Importar WebClient
+import org.springframework.web.reactive.function.client.WebClientResponseException; // Para errores HTTP
+import reactor.core.publisher.Mono; // Importar Mono
 
-import java.io.FileNotFoundException;
-import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.nio.file.Paths; // Importar Paths
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+
+
 import java.util.Optional;
+
+
 
 @Service
 public class PacienteService {
 
     private static final Logger log = LoggerFactory.getLogger(PacienteService.class);
-    private List<Paciente> listaPacientes = new ArrayList<>();
-    private final ObjectMapper objectMapper;
 
-    // Inyecta el valor de la propiedad 'app.pacientes.json.path'
-    // Si no se define, no asignará nada (null o vacío dependiendo del tipo)
-    @Value("${app.pacientes.json.path:#{null}}") // Usamos SpEL para default null si no existe
-    private String externalJsonPath;
+    /*private final WebClient webClient;
 
-    public PacienteService(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-        if (!this.objectMapper.getRegisteredModuleIds().contains(JavaTimeModule.class.getName())) {
-            this.objectMapper.registerModule(new JavaTimeModule());
+    // Inyectamos la URL base desde application.properties
+    @Value("${legacy.api.baseurl}")
+    private String legacyApiBaseUrl;
+
+    // Constructor para inicializar WebClient
+    // Inyectamos WebClient.Builder que está auto-configurado por Spring Boot
+    public PacienteService(WebClient.Builder webClientBuilder) {
+        // Creamos una instancia de WebClient configurada para la API legacy
+        // Es mejor práctica definir esto como un @Bean en una clase de Configuración,
+        // pero para simplificar lo hacemos aquí.
+        this.webClient = webClientBuilder.baseUrl(legacyApiBaseUrl).build();
+        // NOTA: La baseUrl se inyectará después de la construcción,
+        // por lo que es mejor configurar el webClient en un método @PostConstruct
+        // o definirlo como un @Bean. Vamos a refinar esto:
+    }*/
+
+    // Alternativa/Mejora: Configurar WebClient después de la inyección de propiedades
+
+    @Value("${legacy.api.baseurl}")
+    private String legacyApiBaseUrl;
+
+    private final WebClient webClient;
+
+    // Inyecta el bean 'legacyApiWebClient' definido en WebClientConfig
+    public PacienteService(WebClient legacyApiWebClient) {
+        this.webClient = legacyApiWebClient;
+        log.info("PacienteService inyectado con WebClient: {}", webClient);
+    }
+
+
+
+    // Ya no necesitamos cargar desde JSON
+    // @PostConstruct
+    // public void cargarDatosDesdeJson() { ... }
+
+    /**
+     * Formatea un DPI de 13 dígitos sin espacios al formato "XXXX XXXXX XXXX".
+     * @param dpiSinEspacios DPI de 13 dígitos.
+     * @return DPI formateado o null si la entrada es inválida.
+     */
+    private String formatDpiConEspacios(String dpiSinEspacios) {
+        if (dpiSinEspacios == null || dpiSinEspacios.length() != 13 || !dpiSinEspacios.matches("\\d+")) {
+            log.warn("Intento de formatear DPI inválido: {}", dpiSinEspacios);
+            return null; // O lanzar excepción
+        }
+        // 3593 74514 0801
+        return dpiSinEspacios.substring(0, 4) + " " +
+                dpiSinEspacios.substring(4, 9) + " " +
+                dpiSinEspacios.substring(9, 13);
+    }
+
+    // Método findByDpi modificado para llamar a la API legacy
+    public Optional<Paciente> findByDpi(String dpiSinEspacios) {
+        if (dpiSinEspacios == null || dpiSinEspacios.trim().isEmpty()) {
+            return Optional.empty();
+        }
+
+        String cuiConEspacios = formatDpiConEspacios(dpiSinEspacios);
+        if (cuiConEspacios == null) {
+            return Optional.empty(); // DPI inválido para formatear
+        }
+
+        log.info("Buscando en API legacy con CUI formateado: {}", cuiConEspacios);
+
+        try {
+            // Hacemos la llamada a la API legacy
+            // La API legacy devuelve un array, incluso para búsqueda por CUI único
+            LegacyPacienteDTO[] legacyResponseArray = webClient.get()
+                    .uri("/api/BusquedaLegacy/avanzado/{cui}", cuiConEspacios) // Construye la URL relativa
+                    .retrieve() // Ejecuta la petición
+                    .bodyToMono(LegacyPacienteDTO[].class) // Espera un array de DTOs
+                    .onErrorResume(WebClientResponseException.NotFound.class, ex -> {
+                        log.warn("API Legacy no encontró CUI: {}", cuiConEspacios);
+                        return Mono.just(new LegacyPacienteDTO[0]); // Devuelve array vacío en 404
+                    })
+                    .onErrorResume(WebClientResponseException.class, ex -> {
+                        log.error("Error {} de API Legacy al buscar CUI {}: {}", ex.getStatusCode(), cuiConEspacios, ex.getResponseBodyAsString());
+                        return Mono.error(new RuntimeException("Error al llamar API Legacy: " + ex.getStatusCode())); // Propaga otros errores HTTP
+                    })
+                    .onErrorResume(Exception.class, ex -> {
+                        log.error("Error inesperado al llamar API Legacy para CUI {}: {}", cuiConEspacios, ex.getMessage());
+                        return Mono.error(new RuntimeException("Error inesperado llamando API Legacy", ex)); // Propaga errores generales
+                    })
+                    .block(); // Espera el resultado (bloqueante)
+            // En una aplicación completamente reactiva, evitaríamos .block()
+
+            if (legacyResponseArray != null && legacyResponseArray.length > 0) {
+                // Asumimos que el primero es el correcto para una búsqueda por CUI
+                LegacyPacienteDTO legacyDto = legacyResponseArray[0];
+                log.info("Respuesta recibida de API legacy para {}: {}", cuiConEspacios, legacyDto);
+
+                // Mapeamos la respuesta DTO a nuestro modelo Paciente
+                Paciente paciente = new Paciente();
+                paciente.setCodigo(String.valueOf(legacyDto.getCodigo()));
+                paciente.setDpi(dpiSinEspacios); // Guardamos el DPI original sin espacios
+                paciente.setNombres(legacyDto.getNombres());
+                paciente.setApellidos(legacyDto.getApellidos());
+                paciente.setEdad(legacyDto.getEdad());
+                // Campos no disponibles en la API legacy quedan null por defecto:
+                // paciente.setFechaNacimiento(null);
+                // paciente.setSexo(null);
+                // Decidir qué hacer con 'codigo'. ¿Usamos historiaClinica o lo dejamos null?
+                // paciente.setCodigo(legacyDto.getHistoriaClinica());
+              //  paciente.setCodigo(null); // O dejarlo null
+
+                return Optional.of(paciente);
+            } else {
+                // No se encontró en la API legacy (o hubo un 404 manejado)
+                log.info("No se encontró paciente en API legacy para CUI {}", cuiConEspacios);
+                return Optional.empty();
+            }
+
+        } catch (Exception e) {
+            // Captura errores propagados por onErrorResume o el .block()
+            log.error("Excepción final al procesar búsqueda para CUI {}: {}", cuiConEspacios, e.getMessage());
+            return Optional.empty();
         }
     }
 
-    @PostConstruct
-    public void cargarDatosDesdeJson() {
-        Resource resource = null;
-        boolean loadedFromExternal = false;
-
-        // 1. Intentar cargar desde la ruta externa si está definida
-        if (externalJsonPath != null && !externalJsonPath.trim().isEmpty()) {
-            try {
-                log.info("Intentando cargar pacientes desde ruta externa: {}", externalJsonPath);
-                // Usamos UrlResource para manejar prefijos como file: o classpath:
-                // o simplemente rutas de sistema de archivos. Paths.get asegura que sea una ruta de archivo válida.
-                resource = new UrlResource(Paths.get(externalJsonPath).toUri());
-                if (resource.exists() && resource.isReadable()) {
-                    log.info("Archivo JSON externo encontrado en: {}", externalJsonPath);
-                    loadedFromExternal = true;
-                } else {
-                    log.warn("Archivo JSON externo NO encontrado o no legible en: {}", externalJsonPath);
-                    resource = null; // Resetear para intentar fallback
-                }
-            } catch (MalformedURLException e) {
-                log.error("Ruta externa mal formada '{}': {}", externalJsonPath, e.getMessage());
-                resource = null; // Resetear para intentar fallback
-            } catch (Exception e) { // Captura más amplia por si acaso (permisos, etc.)
-                log.error("Error inesperado al acceder a la ruta externa '{}': {}", externalJsonPath, e.getMessage());
-                resource = null; // Resetear para intentar fallback
-            }
-        } else {
-            log.info("No se especificó ruta externa (app.pacientes.json.path), intentando fallback a classpath.");
-        }
-
-
-        // 2. Si no se cargó desde externo, intentar cargar desde el classpath (fallback)
-        if (resource == null) {
-            try {
-                log.info("Intentando cargar pacientes desde classpath: pacientes.json");
-                resource = new ClassPathResource("pacientes.json");
-                if (!resource.exists()) {
-                    log.error("Fallback fallido: Archivo pacientes.json NO encontrado en el classpath.");
-                    this.listaPacientes = Collections.emptyList(); // No hay datos que cargar
-                    return; // Salir si no hay archivo interno tampoco
-                }
-                log.info("Archivo JSON interno (classpath) encontrado.");
-            } catch (Exception e) {
-                log.error("Error al intentar acceder al recurso del classpath pacientes.json: {}", e.getMessage());
-                this.listaPacientes = Collections.emptyList();
-                return;
-            }
-        }
-
-        // 3. Parsear el JSON desde el recurso seleccionado (externo o interno)
-        try (InputStream inputStream = resource.getInputStream()) {
-            this.listaPacientes = objectMapper.readValue(inputStream, new TypeReference<List<Paciente>>() {});
-            String source = loadedFromExternal ? externalJsonPath : "classpath:pacientes.json";
-            log.info(">>> {} pacientes cargados correctamente desde {}", listaPacientes.size(), source);
-
-            if (!listaPacientes.isEmpty()) {
-                log.info(">>> DPI de ejemplo para buscar: {}", listaPacientes.get(0).getDpi());
-            }
-
-        } catch (FileNotFoundException e) { // Específico por si isReadable falló sutilmente
-            log.error("Error: Archivo de recurso no encontrado al intentar leer: {}", resource.getDescription());
-            this.listaPacientes = Collections.emptyList();
-        }
-        catch (Exception e) {
-            log.error("!!! Error al parsear JSON desde {}: {}", resource.getDescription(), e.getMessage(), e);
-            this.listaPacientes = Collections.emptyList();
-        }
-    }
-
-    // --- Métodos findAll, findByCodigo, findByDpi (sin cambios) ---
+    // Estos métodos ya no funcionarán porque no tenemos la lista local
+    /*
     public List<Paciente> findAll() {
-        return listaPacientes;
+        // Necesitaría un endpoint en la API legacy para listar todos
+        log.warn("findAll() no implementado con API Legacy.");
+        return Collections.emptyList();
     }
 
     public Optional<Paciente> findByCodigo(String codigo) {
-        return listaPacientes.stream()
-                .filter(p -> p.getCodigo().equalsIgnoreCase(codigo))
-                .findFirst();
+        // Necesitaría un endpoint en la API legacy para buscar por 'codigo' o 'historiaClinica'
+         log.warn("findByCodigo() no implementado con API Legacy.");
+        return Optional.empty();
     }
-
-    public Optional<Paciente> findByDpi(String dpi) {
-        if (dpi == null || dpi.trim().isEmpty()) {
-            return Optional.empty();
-        }
-        return listaPacientes.stream()
-                .filter(p -> p.getDpi() != null && p.getDpi().equals(dpi))
-                .findFirst();
-    }
+    */
 }
